@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# based on tunlr 0.2.0 Copyright: (C) 2012-2014 edloaa <edloaa at googlemail dot com>
+# Copyright: (C) 2014 Andrew <andrew at webupd8 dot org>
+# License: GPL-3 <http://www.gnu.org/licenses/gpl-3.0.txt>
+
+
+# VARIABLES
+
+VERS="0.2.0"
+RSLV=/etc/resolv.conf
+NLL=/dev/null
+get_dns="https://support.unlocator.com/customer/portal/articles/1385627-how-to-set-up-ubuntu"
+
+
+if [ $UID != 0 ] && [[ "$1" =~ start|stop ]]
+then
+	echo "you must be root to run 'unlocator $1'" 1>&2
+	exit 1
+fi
+
+usage() {
+	echo -e "unlocator $VERS\n"
+	echo "usage: unlocator {start|stop}"
+	echo
+	echo "OPTIONS:"
+	echo " start   - enables unlocator DNS in $RSLV"
+	echo " stop    - disables unlocator DNS in $RSLV"
+	exit 0
+}
+
+
+err() { echo "failed"; exit 1; }
+
+wget_err() {
+		if [ $? -ne "0" ]
+		then
+			echo "an error occured - please try again"
+			exit 1
+		fi
+}
+
+case "$1" in
+
+	start)	echo -n "activating Unlocator service... "
+
+		# DNS IP QUERY
+		L1=$(wget -q -O - "$get_dns" 2>&1 | grep "Set DNS servers to" | sed -e :a -e 's/<[^>]*>//g;/</N;//ba' -e 's/Set DNS servers to&nbsp;//g' -e 's/ //g' -e 's/,&nbsp;/ /g' -e 's/\t//g')
+
+		if [ -z "$L1" ]
+		then
+			echo -e "failed\nDNS address query failed - no IP address received"
+			exit 1
+		else
+			L2=$(echo "$L1" | sed 's/ /\n/g' | sed 's/^/nameserver /g')
+		fi
+
+		if [ -f $RSLV.bak ]
+		then
+			echo -e "failed\n$RSLV.bak does already exist - nothing will be changed"
+			exit 1
+		else
+			cp $RSLV $RSLV.bak 2>$NLL || err
+		fi
+
+		echo -e "#UNLOCATOR DNS\n$L2" >$RSLV 2>$NLL
+		cat $RSLV.bak >>$RSLV
+		echo -e "ok\nUnlocator DNS added to $RSLV\nrestart your web browser to apply the changes"
+		;;
+
+	stop)	echo -n "deactivating Unlocator service... "
+
+		if [ -f $RSLV.bak ]
+		then
+			cp $RSLV.bak $RSLV 2>$NLL || err
+			rm $RSLV.bak 2>$NLL || err
+			echo -e "ok\nrestart your web browser to apply the changes"
+		else
+			echo -e "failed\n$RSLV.bak does not exist - unable to restore DNS config"
+			exit 1
+		fi
+		;;
+
+	*)	usage ;;
+
+esac
+
+exit 0
